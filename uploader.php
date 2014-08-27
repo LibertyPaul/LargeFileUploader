@@ -8,13 +8,13 @@ function exceptionHandler($exception){
 set_exception_handler('exceptionHandler');//нафиг лишние try catch.
 
 
-if(isset($_REQUEST["requestType"]) === false){
+if(isset($_REQUEST["requestType"]) === false)
 	throw new Exception('"requestType" parameter is missing');
 
 
 switch($_REQUEST["requestType"]){
 	case "init":
-		if(isset($_REQUEST["fileName"], $_REQUEST["fileSize"], $_REQUEST["hash"]) === false){
+		if(isset($_REQUEST["fileName"], $_REQUEST["fileSize"], $_REQUEST["hash"]) === false)
 			throw new Exception('some parameters are missing');
 		
 		$token = init($_REQUEST["fileName"], $_REQUEST["fileSize"], $_REQUEST["hash"]);
@@ -55,7 +55,7 @@ function isFileNameValid($fileName){
 		return false;//не принимаем файлы с именем > 255 символов
 		
 	for($i = 0; $i < $length; ++$i)
-		if($fileName[$i] === '\\' || $filename[$i] === '/')//в юниксах любое имя без слешей корректно. + спасет от /../../../ хака
+		if($fileName[$i] === '\\' || $fileName[$i] === '/')//в юниксах любое имя без слешей корректно. + спасет от /../../../ хака
 			return false;
 	return true;
 }
@@ -67,7 +67,7 @@ function init($fileName, $fileSize, $hash){
 	
 	$sql->set_charset("utf8");
 	
-	if(is_number($fileSize) === false || $fileSize < 0)
+	if(is_numeric($fileSize) === false || $fileSize < 0)
 		throw new Exception("Incorrect file size");
 	
 	if(isFileNameValid($fileName) === false)
@@ -89,7 +89,7 @@ function init($fileName, $fileSize, $hash){
 	$fileId = $res->fetch_object()->id;
 	$hFile = fopen(tmp_dir.$fileId, 'x');//создаем пустой файл
 	if($hFile === false)
-		throw new Error("Temporary file creating error");
+		throw new Exception("Temporary file creating error");
 	
 	fclose($hFile);
 	
@@ -104,11 +104,8 @@ function killUploader($uploader, $sql){
 	unlink(tmp_dir.$uploader->id);
 }
 
-function uploadPart($token, $partSize, $filePart){
-	if(isFileNameValid($filePart["tmp_name"]) === false)
-		throw new Exception("Incorrect file name");
-	
-	if(is_number($partSize) === false)
+function uploadPart($token, $partSize, $filePart){	
+	if(is_numeric($partSize) === false)
 		throw new Exception("Incorrect part size");
 
 
@@ -146,6 +143,10 @@ function uploadPart($token, $partSize, $filePart){
 	
 	
 function finishUpload($token){
+	$sql = new mysqli(HOST, DBuser, DBpass, DBname);
+	if(!$sql)
+		throw new Exception("MySQL connection error");
+		
 	$token = $sql->real_escape_string($token);
 	
 	$res = $sql->query("SELECT * FROM uploadingFiles WHERE token = '$token'");
@@ -186,5 +187,5 @@ function finishUpload($token){
 }
 
 	
-	
+?>	
 	

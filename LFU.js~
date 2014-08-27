@@ -36,7 +36,7 @@ function createUploader(url, selectedFile, hash){
 	
 	
 	uploaderInitRequest.onreadystatechange = function(event){
-		if(this.readyState === 4){
+		if(this.readyState === 4 && this.status === 200){
 			var response = JSON.parse(uploaderInitRequest.responseText);
 			if(response.errno !== 0)
 				throw new Error(response.what);
@@ -93,7 +93,9 @@ function finishUpload(url, token){
 	var fileInfo = new FormData();
 	fileInfo.append('requestType', 'finishUpload');
 	fileInfo.append('token', token);
-		
+	
+	fileInfo.append('additionalInfo', JSON.stringify(additionalInfo));
+	
 	
 	var request = new XMLHttpRequest();
 	request.open('post', url);
