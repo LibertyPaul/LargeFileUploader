@@ -5,46 +5,100 @@
 3. finishUpload
 */
 
-function sendFile(url, selectedFile){//selectedFile - ссылка на input type="file" с выбранным файлом. additionalInfo - объект с любой информацией.
-	if(selectedFile.value === '')
-		throw new Error("File is not selected");
-		
+function LFU(url, file, callback, progressHandler){
 	//тут можно вставить проверку URL по regexp. Но мне лень.
-
-	var fileReader = new FileReader();
-	fileReader.readAsArrayBuffer(selectedFile);
+	this.url = url;
 	
-	fileReader.onloadend = function(){
+	if(file.value === '')
+		throw new Error("File is not selected");
+	this.file = file;
+	
+	if(typeof callback !== 'function')
+		throw new Error("callback is not a function");
+	this.callback = callback;
+	
+	if(typeof progressHandler === 'function')
+		this.progressHandler = progressHandler;
+	else
+		this.progressHandler = null;
+	
+	
+	this.partSize = 1024 * 512;//загружаем кусками по 0.5мб
+	
+	this.progress = 0;
+	this.progressPoints = {
+		hashCalculated: 0.1,
+		uploaderCreated: 0.1,
+		byteUploaded: 0.7 / this.file.size,
+		uploadFinished: 0.1
+	};
+	
+	
+	
+	this.hash = null;
+	this.uploaderToken = null;
+	
+	this.updateProgress();
+}
+
+LFU.prototype.getProgress = function(){
+	return this.progress;
+};
+LFU.prototype.updateProgress = function(){
+	if(this.progressHandler !== null)
+		this.progressHandler(this.progress);
+};
+LFU.prototype.increaseProgress = function(val){
+	if(val < 0)
+		throw new Error("val < 0");
+	if(this.progress + val > 1)
+		throw new Error("Progress cant be more than 1");
+	this.progress += val;
+	
+	this.updateProgress();
+};
+LFU.prototype.finishProgress = function(){
+	this.progress = 1;
+	this.updateProgress();
+};
+
+
+LFU.prototype.sendFile = function(){//selectedFile - ссылка на input type="file" с выбранным файлом. callback(token) - функция, которя вызовется после загрузки
+	var fileReader = new FileReader();
+	
+	var instance = this;
+	fileReader.onloadend = function(event){
 		if(fileReader.readyState !== 2)
 			throw new Error("File reading error");
 		
-		var hash = crc32hex(fileReader.result);
-		createUploader(url, selectedFile, hash);
+		instance.hash = crc32hex(fileReader.result);
+		instance.increaseProgress(instance.progressPoints.hashCalculated);
+		instance.createUploader();
 	};
-}
+	fileReader.readAsArrayBuffer(this.file);
+};
 
 
-function createUploader(url, selectedFile, hash){
+LFU.prototype.createUploader = function(){
 	var uploaderInitForm = new FormData();
 	uploaderInitForm.append('requestType', 'init');
-	uploaderInitForm.append('fileName', selectedFile.name);
-	uploaderInitForm.append('fileSize', selectedFile.size);
-	uploaderInitForm.append('hash', hash);
+	uploaderInitForm.append('fileName', this.file.name);
+	uploaderInitForm.append('fileSize', this.file.size);
+	uploaderInitForm.append('hash', this.hash);
 	
 	var uploaderInitRequest = new XMLHttpRequest();
-	uploaderInitRequest.open('post', url);
+	uploaderInitRequest.open('post', this.url);
 	
-	
+	var instance = this;
 	uploaderInitRequest.onreadystatechange = function(event){
-		if(this.readyState === 4){
-			var response = JSON.parse(uploaderInitRequest.responseText);
+		if(event.target.readyState === 4){
+			var response = JSON.parse(event.target.responseText);
 			if(response.errno !== 0)
 				throw new Error(response.what);
 			
-			var token = response.token;
-			//setProgressBar(fileObj.file.size / 10);
-			//showInfo("Начинаю загружать файл");
-			sendFileParts(0, url, selectedFile, token);			
+			instance.uploaderToken = response.token;
+			instance.increaseProgress(instance.progressPoints.uploaderCreated);
+			instance.sendFileParts();			
 		}
 	};
 	
@@ -52,36 +106,36 @@ function createUploader(url, selectedFile, hash){
 }
 
 	
-function sendFileParts(start, url, selectedFile, token){
-	if(start >= selectedFile.size){
-		finishUpload(url, token);
+LFU.prototype.sendFileParts = function(start){
+	if(typeof start === 'undefined')
+		start = 0;	
+	
+	if(start >= this.file.size){
+		this.finishUpload();
 		return;
 	}
-	const partSize = 1024 * 512;//загружаем кусками по 0.5мб
 	
-	var currentSize = Math.min(selectedFile.size - start, partSize);
-	var part = selectedFile.slice(start, start + currentSize);
+	var currentSize = Math.min(this.file.size - start, this.partSize);
+	var part = this.file.slice(start, start + currentSize);
 	
 	var currentFilePart = new FormData();
 	currentFilePart.append('requestType', 'uploadPart');
-	currentFilePart.append('token', token);
+	currentFilePart.append('token', this.uploaderToken);
 	currentFilePart.append('partSize', currentSize);
 	currentFilePart.append('filePart', part);
 	
 	
 	var request = new XMLHttpRequest();
-	request.open('post', url);
-	/*request.upload.addEventListener('progress', function(evt){
-		updateProgressBar(evt.loaded);
-	});*/
+	request.open('post', this.url);
 	
+	var instance = this;
 	request.onreadystatechange = function(event){
-		if(this.readyState === 4){
-			var response = JSON.parse(request.responseText);
+		if(event.target.readyState === 4){
+			var response = JSON.parse(event.target.responseText);
 			if(response.errno !== 0)
 				throw new Error(response.what);
-			//setProgressBar(currentSize);
-			sendFileParts(start + currentSize, url, selectedFile, token);
+			instance.increaseProgress(instance.progressPoints.byteUploaded * currentSize);
+			instance.sendFileParts(start + currentSize);
 		}
 	};
 	
@@ -89,27 +143,25 @@ function sendFileParts(start, url, selectedFile, token){
 }
 	
 	
-function finishUpload(url, token){
+LFU.prototype.finishUpload = function(){
 	var fileInfo = new FormData();
 	fileInfo.append('requestType', 'finishUpload');
-	fileInfo.append('token', token);
+	fileInfo.append('token', this.uploaderToken);
 		
 	
 	var request = new XMLHttpRequest();
-	request.open('post', url);
+	request.open('post', this.url);
 	
-	
+	var instance = this;
 	request.onreadystatechange = function(event){
-		if(this.readyState === 4){
-			var response = JSON.parse(request.responseText);
+		if(event.target.readyState === 4){
+			var response = JSON.parse(event.target.responseText);
 			if(response.errno !== 0)
 				throw new Error(response.what);
 			
-			//setProgressBar(fileObj.file.size / 10);
-			//showSuccess("Файл загружен");
+			instance.increaseProgress(instance.progressPoints.uploadFinished);
 			var token = response.token;
-			alert("Success: " + token);
-			//тут надо вызвать следующую функцию
+			instance.callback(token);
 		}
 	};
 	
