@@ -5,22 +5,17 @@
 3. finishUpload
 */
 
-function LFU(url, file, callback, progressHandler){
+function LFU(url, file){
 	//тут можно вставить проверку URL по regexp. Но мне лень.
 	this.url = url;
 	
 	if(file.value === '')
 		throw new Error("File is not selected");
 	this.file = file;
+		
 	
-	if(typeof callback !== 'function')
-		throw new Error("callback is not a function");
-	this.callback = callback;
-	
-	if(typeof progressHandler === 'function')
-		this.progressHandler = progressHandler;
-	else
-		this.progressHandler = null;
+	this.onprogress = null;
+	this.onfinish = null;
 	
 	
 	this.partSize = 1024 * 512;//загружаем кусками по 0.5мб
@@ -45,8 +40,8 @@ LFU.prototype.getProgress = function(){
 	return this.progress;
 };
 LFU.prototype.updateProgress = function(){
-	if(this.progressHandler !== null)
-		this.progressHandler(this.progress);
+	if(this.onprogress !== null)
+		this.onprogress(this.progress);
 };
 LFU.prototype.increaseProgress = function(val){
 	if(val < 0)
@@ -161,7 +156,8 @@ LFU.prototype.finishUpload = function(){
 			
 			instance.increaseProgress(instance.progressPoints.uploadFinished);
 			var token = response.token;
-			instance.callback(token);
+			if(instance.onfinish !== null)
+				instance.onfinish(token);
 		}
 	};
 	

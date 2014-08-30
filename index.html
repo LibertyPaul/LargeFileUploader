@@ -18,14 +18,19 @@
 <script>
 const url = "http://libertypaul.ru/LFU/uploader.php";
 
-function progressHandler(value){
-	var bar = document.querySelector("progress#fileSend");
-	bar.value = value;
-}
+
 
 function send(){
 	var file = document.getElementById('file').files[0];
-	var uploader = new LFU(url, file, function(token){alert(token);}, progressHandler);
+	var uploader = new LFU(url, file);
+	uploader.onprogress = function(value){
+		var bar = document.querySelector("progress#fileSend");
+		bar.value = value;
+	};
+	uploader.onfinish = function(token){
+		alert(token);
+	};
+		
 	uploader.sendFile();
 }
 </script>
