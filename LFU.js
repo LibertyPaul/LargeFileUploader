@@ -46,9 +46,9 @@ LFU.prototype.updateProgress = function(){
 LFU.prototype.increaseProgress = function(val){
 	if(val < 0)
 		throw new Error("val < 0");
-	if(this.progress + val > 1)
-		throw new Error("Progress cant be more than 1");
 	this.progress += val;
+	if(this.progress > 1)
+		this.progress = 1;
 	
 	this.updateProgress();
 };
